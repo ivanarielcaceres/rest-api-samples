@@ -247,6 +247,61 @@ def get_default_project_id(server, auth_token, site_id):
             return project.get('id')
     print("\tProject named 'default' was not found in {0}".format(server))
 
+def get_project_id(server, auth_token, site_id, project_name):
+    """
+    Returns the project ID for the project_target_nam project on the Tableau server.
+
+    'server'        specified server address
+    'auth_token'    authentication token that grants user access to API calls
+    'site_id'       ID of the site that the user is signed into
+    """
+    page_num, page_size = 1, 100  # Default paginating values
+
+    # Builds the request
+    url = server + "/api/{0}/sites/{1}/projects".format(VERSION, site_id)
+    paged_url = url + "?pageSize={0}&pageNumber={1}".format(page_size, page_num)
+    server_response = requests.get(paged_url, headers={'x-tableau-auth': auth_token})
+    _check_status(server_response, 200)
+    xml_response = ET.fromstring(_encode_for_display(server_response.text))
+
+    # Used to determine if more requests are required to find all projects on server
+    total_projects = int(xml_response.find('t:pagination', namespaces=xmlns).get('totalAvailable'))
+    max_page = int(math.ceil(total_projects / page_size))
+
+    projects = xml_response.findall('.//t:project', namespaces=xmlns)
+
+    # Continue querying if more projects exist on the server
+    for page in range(2, max_page + 1):
+        paged_url = url + "?pageSize={0}&pageNumber={1}".format(page_size, page)
+        server_response = requests.get(paged_url, headers={'x-tableau-auth': auth_token})
+        _check_status(server_response, 200)
+        xml_response = ET.fromstring(_encode_for_display(server_response.text))
+        projects.extend(xml_response.findall('.//t:project', namespaces=xmlns))
+
+    # Look through all projects to find the 'default' one
+    for project in projects:
+        if project.get('name') == project_name:
+            return project.get('id')
+    print("\tProject named {0} was not found in {1}".format(project_name, server))
+
+def get_site_id(server, auth_token, site_target_name):
+    """
+    Returns the site ID for the 'site_target_name' site name on the Tableau server.
+
+    'server'        specified server address
+    'auth_token'    authentication token that grants user access to API calls
+    'site_target_name'   Name of the site to find the id
+    """
+    page_num, page_size = 1, 100  # Default paginating values
+    # Builds the request
+    url = server + "/api/{0}/sites/{1}".format(VERSION, site_target_name)
+    paged_url = url + "?key={0}&pageSize={1}&pageNumber={2}".format("name", page_size, page_num)
+    server_response = requests.get(paged_url, headers={'x-tableau-auth': auth_token})
+    _check_status(server_response, 200)
+    xml_response = ET.fromstring(_encode_for_display(server_response.text))
+    xml_response.findall('.//t:site', namespaces=xmlns)
+    site_id = xml_response.find('t:site', namespaces=xmlns).get('id')
+    return site_id
 
 def download(server, auth_token, site_id, workbook_id):
     """
@@ -360,18 +415,20 @@ def delete_workbook(server, auth_token, site_id, workbook_id, workbook_filename)
 
 def main():
     ##### STEP 0: Initialization #####
-    if len(sys.argv) != 3:
-        error = "2 arguments needed (server, username)"
+    if len(sys.argv) != 12:
+        error = "11 arguments needed (server_source, server_target, server_source_username, server_source_password, server_target_username, server_target_password, site_source_name, site_target_name, project_source_name, project_target_name, workbook_source_name)"
         raise UserDefinedFieldError(error)
     source_server = sys.argv[1]
-    source_username = sys.argv[2]
-    workbook_name = raw_input("\nName of workbook to move: ")
-    dest_server = raw_input("\nDestination server: ")
-    dest_username = raw_input("\nDestination server username: ")
+    source_username = sys.argv[3]
+    workbook_name = sys.argv[11]
+    dest_server = sys.argv[2]
+    dest_username = sys.argv[5]
+    project_target_name = sys.argv[10]
+    site_target_name = sys.argv[8]
 
     print("\n*Moving '{0}' workbook to the 'default' project in {1}*".format(workbook_name, dest_server))
-    source_password = getpass.getpass("Password for {0} on {1}: ".format(source_username, source_server))
-    dest_password = getpass.getpass("Password for {0} on {1}: ".format(dest_username, dest_server))
+    source_password = sys.argv[4]
+    dest_password =  sys.argv[6]
 
     ##### STEP 1: Sign in #####
     print("\n1. Signing in to both sites to obtain authentication tokens")
@@ -381,28 +438,32 @@ def main():
     # Destination server
     dest_auth_token, dest_site_id, dest_user_id = sign_in(dest_server, dest_username, dest_password)
 
-    ##### STEP 2: Find workbook id #####
-    print("\n2. Finding workbook id of '{0}'".format(workbook_name))
+    ##### STEP 2: Find site id #####
+    # print("\n2 Finding site id of '{0}'".format(site_target_name))
+    # dest_site_id = get_site_id(dest_server, dest_auth_token, site_target_name)
+
+    ##### STEP 3: Find workbook id #####
+    print("\n3. Finding workbook id of '{0}'".format(workbook_name))
     workbook_id = get_workbook_id(source_server, source_auth_token, source_user_id, source_site_id, workbook_name)
 
-    ##### STEP 3: Find 'default' project id for destination server #####
-    print("\n3. Finding 'default' project id for {0}".format(dest_server))
-    dest_project_id = get_default_project_id(dest_server, dest_auth_token, dest_site_id)
+    ##### STEP 4: Find 'default' project id for destination server #####
+    print("\n4. Finding {0} project id for {1}".format(project_target_name, dest_server))
+    dest_project_id = get_project_id(dest_server, dest_auth_token, dest_site_id, project_target_name)
 
-    ##### STEP 4: Download workbook #####
-    print("\n4. Downloading the workbook to move")
+    ##### STEP 5: Download workbook #####
+    print("\n5. Downloading the workbook to move")
     workbook_filename = download(source_server, source_auth_token, source_site_id, workbook_id)
 
-    ##### STEP 5: Publish to new site #####
-    print("\n5. Publishing workbook to {0}".format(dest_server))
+    ##### STEP 6: Publish to new site #####
+    print("\n6. Publishing workbook to {0}".format(dest_server))
     publish_workbook(dest_server, dest_auth_token, dest_site_id, workbook_filename, dest_project_id)
 
-    ##### STEP 6: Deleting workbook from the source site #####
-    print("\n6. Deleting workbook from the original site and temp file")
+    ##### STEP 7: Deleting workbook from the source site #####
+    print("\n7. Deleting workbook from the original site and temp file")
     delete_workbook(source_server, source_auth_token, source_site_id, workbook_id, workbook_filename)
 
-    ##### STEP 7: Sign out #####
-    print("\n7. Signing out and invalidating the authentication token")
+    ##### STEP 8: Sign out #####
+    print("\n8. Signing out and invalidating the authentication token")
     sign_out(source_server, source_auth_token)
     sign_out(dest_server, dest_auth_token)
 
