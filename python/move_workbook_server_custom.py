@@ -419,24 +419,28 @@ def main():
         error = "11 arguments needed (server_source, server_target, server_source_username, server_source_password, server_target_username, server_target_password, site_source_name, site_target_name, project_source_name, project_target_name, workbook_source_name)"
         raise UserDefinedFieldError(error)
     source_server = sys.argv[1]
-    source_username = sys.argv[3]
-    workbook_name = sys.argv[11]
     dest_server = sys.argv[2]
-    dest_username = sys.argv[5]
-    project_target_name = sys.argv[10]
-    site_target_name = sys.argv[8]
-
-    print("\n*Moving '{0}' workbook to the 'default' project in {1}*".format(workbook_name, dest_server))
+    source_username = sys.argv[3]
     source_password = sys.argv[4]
+    dest_username = sys.argv[5]
     dest_password =  sys.argv[6]
+    site_source_name = sys.argv[7]
+    site_source_name = "" if site_source_name == "0" else site_source_name
+    site_target_name = sys.argv[8]
+    site_target_name = "" if site_target_name == "0" else site_target_name
+    project_target_name = sys.argv[10]
+    workbook_name = sys.argv[11]
+
+    print("\n*Moving '{0}' workbook to the {1} project in {2} on the site {3}*".format(workbook_name, project_target_name, dest_server, site_target_name))
 
     ##### STEP 1: Sign in #####
     print("\n1. Signing in to both sites to obtain authentication tokens")
     # Source server
-    source_auth_token, source_site_id, source_user_id = sign_in(source_server, source_username, source_password)
-
+    print("\n Source server auth: {0} {1} {2} {3}".format(source_server, source_username, source_password, site_source_name))
+    source_auth_token, source_site_id, source_user_id = sign_in(source_server, source_username, source_password, site_source_name)
     # Destination server
-    dest_auth_token, dest_site_id, dest_user_id = sign_in(dest_server, dest_username, dest_password)
+    print("\n Target server auth: {0} {1} {2} {3}".format(dest_server, dest_username, dest_password, site_target_name))
+    dest_auth_token, dest_site_id, dest_user_id = sign_in(dest_server, dest_username, dest_password, site_target_name)
 
     ##### STEP 2: Find site id #####
     # print("\n2 Finding site id of '{0}'".format(site_target_name))

@@ -39,5 +39,4 @@ Move workbook from one server to another passign parameters
     argv[10] = project_target_name
     argv[11] = workbook_source_name
 
-2. Example Execution
-python .\move_workbook_server_custom.py http://chi884 http://chi901 icaceres icaceres Administrator Winbl0ws!!! 1 Default 1 Default test
+To authenticated in the default source/target site, put 0 as value
